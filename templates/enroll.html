@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAMFace — Enroll Person</title>
+<style>
+  :root {
+    --bg:         #ffffff;
+    --surface:    #fafafa;
+    --surface2:   #f0f0f0;
+    --border:     #d6d6d6;
+    --accent:     #111111;
+    --accent-dim: #3a3a3a;
+    --danger:     #b91c1c;
+    --warn:       #7a5c2e;
+    --text:       #1a1a1a;
+    --muted:      #6b6b6b;
+    --mono:       'JetBrains Mono', 'Fira Code', monospace;
+    --sans:       'Inter', system-ui, sans-serif;
+    --radius:     6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: 52px 1fr;
+  }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+  }
+  .logo { font-family: var(--mono); font-size: 15px; font-weight: 700; letter-spacing: .05em; color: var(--accent); }
+  .logo span { color: var(--muted); font-weight: 400; }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 13px; padding: 6px 14px; border-radius: var(--radius); transition: all .15s; }
+  nav a:hover, nav a.active { color: var(--text); background: var(--surface2); }
+  nav a.active { color: var(--accent); }
+
+  .page { display: grid; grid-template-columns: 1fr 320px; gap: 0; max-height: calc(100vh - 52px); overflow: hidden; }
+
+  /* ── Left — enroll form ─────────────────────────────── */
+  .enroll-panel {
+    padding: 28px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .page-title { font-size: 22px; font-weight: 700; }
+  .page-title span { color: var(--accent); }
+  .page-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  /* Section card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .card-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  label { font-size: 13px; color: var(--text); display: block; margin-bottom: 5px; }
+  input[type=text] {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border .15s;
+  }
+  input[type=text]:focus { border-color: var(--accent); }
+  input[type=text]::placeholder { color: var(--muted); }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--surface2);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); color: var(--accent); background: rgba(0,0,0,.04); }
+  .drop-zone .icon { font-size: 30px; margin-bottom: 8px; display: block; }
+  input[type=file] { display: none; }
+
+  /* Preview grid */
+  .preview-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+  }
+  .preview-item {
+    position: relative;
+    border-radius: 6px;
+    overflow: hidden;
+    aspect-ratio: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .preview-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .preview-item .remove-btn {
+    position: absolute;
+    top: 3px; right: 3px;
+    background: rgba(0,0,0,.7);
+    border: none;
+    color: var(--danger);
+    border-radius: 50%;
+    width: 20px; height: 20px;
+    cursor: pointer;
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .preview-item:hover .remove-btn { opacity: 1; }
+  .preview-item .face-status {
+    position: absolute;
+    bottom: 3px; left: 3px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--muted);
+  }
+  .preview-item .face-status.ok { background: var(--accent); }
+  .preview-item .face-status.fail { background: var(--danger); }
+
+  /* Buttons */
+  .btn {
+    padding: 10px 20px;
+    border-radius: var(--radius);
+    border: none;
+    font-size: 13px;
+    font-family: var(--sans);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all .15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .btn-primary { background: var(--accent); color: #ffffff; }
+  .btn-primary:hover { background: #2a2a2a; }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Progress / feedback */
+  .enroll-feedback {
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    display: none;
+  }
+  .enroll-feedback.success { background: rgba(0,0,0,.04); border: 1px solid var(--accent-dim); color: var(--accent); }
+  .enroll-feedback.error   { background: rgba(185,28,28,.08); border: 1px solid var(--danger); color: var(--danger); }
+
+  .progress-bar-wrap {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+    display: none;
+  }
+  .progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width .3s;
+  }
+
+  /* Person list */
+  .person-list { display: flex; flex-direction: column; gap: 6px; }
+  .person-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--surface2);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .person-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent-dim);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff;
+    text-transform: uppercase;
+  }
+  .person-name { flex: 1; }
+  .person-badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: rgba(0,0,0,.08);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .empty-state { color: var(--muted); font-size: 12px; text-align: center; padding: 20px; }
+
+  /* ── Right — activity log ───────────────────────────── */
+  .panel-right {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .log-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .log-clear { margin-left: auto; background: none; border: none; color: var(--muted); cursor: pointer; font-size:11px; font-family:var(--sans); padding:2px 6px; border-radius:4px; }
+  .log-clear:hover { color: var(--danger); background: rgba(185,28,28,.08); }
+  #log { flex:1; overflow-y:auto; padding:10px; font-family:var(--mono); font-size:11.5px; line-height:1.6; }
+  #log::-webkit-scrollbar { width:4px; }
+  #log::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .log-line { display:grid; grid-template-columns:auto auto 1fr; gap:6px; padding:3px 4px; border-radius:4px; animation:fadein .2s ease; }
+  @keyframes fadein { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+  .log-line:hover { background: var(--surface2); }
+  .log-ts { color:var(--muted); white-space:nowrap; }
+  .log-level { font-weight:700; font-size:10px; padding:1px 5px; border-radius:3px; align-self:start; margin-top:3px; white-space:nowrap; }
+  .level-info  { background:rgba(0,0,0,.06);      color:var(--muted); }
+  .level-ok    { background:rgba(0,0,0,.08);      color:var(--accent); }
+  .level-warn  { background:rgba(122,92,46,.12);  color:var(--warn); }
+  .level-error { background:rgba(185,28,28,.10);  color:var(--danger); }
+  .log-msg { color:var(--text); word-break:break-all; }
+  .spinner { width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;display:none; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">HAM<span>face</span></div>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/enroll" class="active">Enroll Person</a>
+  </nav>
+</header>
+
+<div class="page">
+
+  <!-- LEFT — enroll form -->
+  <div class="enroll-panel">
+    <div>
+      <div class="page-title">Enroll <span>New Person</span></div>
+      <div class="page-sub">Upload face images to add someone to the recognition gallery. More images = better accuracy.</div>
+    </div>
+
+    <!-- Step 1 — name -->
+    <div class="card">
+      <div class="card-title">Step 1 — Identity</div>
+      <div>
+        <label for="person-name">Full name / identifier</label>
+        <input type="text" id="person-name" placeholder="e.g. Angelina Jolie" oninput="checkReady()">
+      </div>
+    </div>
+
+    <!-- Step 2 — images -->
+    <div class="card">
+      <div class="card-title">Step 2 — Face Images</div>
+      <div class="drop-zone" id="enroll-drop" onclick="document.getElementById('enroll-files').click()">
+        <span class="icon">📷</span>
+        Drop face photos here or <strong>click to browse</strong><br>
+        <small>JPG · PNG · WEBP — multiple files accepted</small>
+      </div>
+      <input type="file" id="enroll-files" accept="image/*" multiple onchange="handleFiles(this.files)">
+      <div class="preview-grid" id="preview-grid"></div>
+      <div id="file-count" style="font-size:12px;color:var(--muted)"></div>
+    </div>
+
+    <!-- Step 3 — submit -->
+    <div class="card">
+      <div class="card-title">Step 3 — Submit</div>
+      <div style="color:var(--muted);font-size:12px">
+        Face alignment and embedding extraction will run automatically.
+        The gallery updates instantly — no retraining needed.
+      </div>
+      <div class="progress-bar-wrap" id="progress-wrap">
+        <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+      </div>
+      <div class="enroll-feedback" id="feedback"></div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary" id="enroll-btn" onclick="submitEnroll()" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+          Enroll Person
+        </button>
+        <button class="btn btn-ghost" onclick="clearForm()">Clear</button>
+        <div class="spinner" id="spinner"></div>
+      </div>
+    </div>
+
+    <!-- Enrolled persons list -->
+    <div class="card">
+      <div class="card-title">Enrolled Persons</div>
+      <div class="person-list" id="person-list">
+        <div class="empty-state">Loading…</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadPersons()" style="align-self:flex-start;font-size:12px;padding:6px 12px">
+        ↻ Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- RIGHT — log -->
+  <div class="panel-right">
+    <div class="log-header">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12" stroke="#ffffff" stroke-width="2"/><line x1="12" y1="16" x2="12.01" y2="16" stroke="#ffffff" stroke-width="2"/></svg>
+      Enrollment Log
+      <button class="log-clear" onclick="clearLog()">clear</button>
+    </div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+// ── Logging ───────────────────────────────────────────────────────────────────
+function log(msg, level = 'info') {
+  const el  = document.getElementById('log');
+  const now = new Date();
+  const ts  = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `
+    <span class="log-ts">${ts}</span>
+    <span class="log-level level-${level}">${level.toUpperCase()}</span>
+    <span class="log-msg">${msg}</span>
+  `;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// ── File handling ─────────────────────────────────────────────────────────────
+let selectedFiles = [];
+
+const enrollDrop = document.getElementById('enroll-drop');
+enrollDrop.addEventListener('dragover', e => { e.preventDefault(); enrollDrop.classList.add('drag-over'); });
+enrollDrop.addEventListener('dragleave', () => enrollDrop.classList.remove('drag-over'));
+enrollDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  enrollDrop.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+function handleFiles(fileList) {
+  const newFiles = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+  newFiles.forEach(f => {
+    if (!selectedFiles.find(x => x.name === f.name && x.size === f.size))
+      selectedFiles.push(f);
+  });
+  renderPreviews();
+  updateFileCount();
+  checkReady();
+  log(`Added ${newFiles.length} image(s). Total: ${selectedFiles.length}`, 'info');
+}
+
+function renderPreviews() {
+  const grid = document.getElementById('preview-grid');
+  grid.innerHTML = '';
+  selectedFiles.forEach((f, i) => {
+    const item = document.createElement('div');
+    item.className = 'preview-item';
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    const rm = document.createElement('button');
+    rm.className = 'remove-btn';
+    rm.innerHTML = '✕';
+    rm.onclick = () => { selectedFiles.splice(i,1); renderPreviews(); updateFileCount(); checkReady(); };
+    const dot = document.createElement('div');
+    dot.className = 'face-status';
+    dot.id = `face-dot-${i}`;
+    item.append(img, rm, dot);
+    grid.appendChild(item);
+  });
+}
+
+function updateFileCount() {
+  const el = document.getElementById('file-count');
+  el.textContent = selectedFiles.length > 0
+    ? `${selectedFiles.length} image${selectedFiles.length>1?'s':''} selected`
+    : '';
+}
+
+function checkReady() {
+  const name = document.getElementById('person-name').value.trim();
+  document.getElementById('enroll-btn').disabled = !(name && selectedFiles.length > 0);
+}
+
+// ── Enroll submit ─────────────────────────────────────────────────────────────
+async function submitEnroll() {
+  const name = document.getElementById('person-name').value.trim();
+  if (!name || selectedFiles.length === 0) return;
+
+  setLoading(true);
+  hideFeedback();
+  log(`Enrolling "${name}" with ${selectedFiles.length} image(s)…`, 'info');
+
+  const pw   = document.getElementById('progress-wrap');
+  const pb   = document.getElementById('progress-bar');
+  pw.style.display = 'block';
+  pb.style.width   = '10%';
+
+  const fd = new FormData();
+  fd.append('name', name);
+  selectedFiles.forEach(f => fd.append('files', f));
+
+  try {
+    pb.style.width = '40%';
+    const r = await fetch('/api/enroll/person', { method:'POST', body: fd });
+    pb.style.width = '85%';
+    const d = await r.json();
+
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+
+    pb.style.width = '100%';
+    showFeedback(`✓ Enrolled "${name}" — ${d.saved} face(s) saved, gallery now has ${d.gallery_size} person(s).`, 'success');
+    log(`Enrolled: ${d.saved} saved, ${d.failed?.length||0} failed.`, 'ok');
+    if (d.failed?.length) d.failed.forEach(f => log(`Skipped: ${f}`, 'warn'));
+
+    // Mark face-detection dots green/red
+    selectedFiles.forEach((_, i) => {
+      const dot = document.getElementById(`face-dot-${i}`);
+      if (dot) dot.classList.add('ok');
+    });
+
+    loadPersons();
+  } catch(e) {
+    pb.style.width = '100%';
+    pb.style.background = 'var(--danger)';
+    showFeedback(`✗ ${e.message}`, 'error');
+    log(`Enroll failed: ${e.message}`, 'error');
+  }
+
+  setTimeout(() => { pw.style.display = 'none'; pb.style.width='0%'; pb.style.background='var(--accent)'; }, 1500);
+  setLoading(false);
+}
+
+function showFeedback(msg, type) {
+  const el = document.getElementById('feedback');
+  el.textContent = msg;
+  el.className   = `enroll-feedback ${type}`;
+  el.style.display = 'block';
+}
+function hideFeedback() { document.getElementById('feedback').style.display = 'none'; }
+
+function clearForm() {
+  document.getElementById('person-name').value = '';
+  selectedFiles = [];
+  renderPreviews();
+  updateFileCount();
+  checkReady();
+  hideFeedback();
+  log('Form cleared.', 'info');
+}
+
+function setLoading(on) {
+  document.getElementById('spinner').style.display = on ? 'block' : 'none';
+  document.getElementById('enroll-btn').disabled   = on;
+}
+
+// ── Person list ───────────────────────────────────────────────────────────────
+async function loadPersons() {
+  try {
+    const r = await fetch('/api/persons');
+    const d = await r.json();
+    const el = document.getElementById('person-list');
+    if (!d.persons || d.persons.length === 0) {
+      el.innerHTML = '<div class="empty-state">No persons enrolled yet.</div>';
+      return;
+    }
+    el.innerHTML = '';
+    d.persons.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'person-row';
+      const initial = p.name.charAt(0).toUpperCase();
+      row.innerHTML = `
+        <div class="person-avatar">${initial}</div>
+        <div class="person-name">${p.name}</div>
+        ${p.in_gallery ? '<span class="person-badge">in gallery</span>' : ''}
+        <span style="color:var(--muted);font-size:11px">ID ${p.id}</span>
+      `;
+      el.appendChild(row);
+    });
+  } catch(e) {
+    document.getElementById('person-list').innerHTML =
+      `<div class="empty-state" style="color:var(--danger)">Could not load: ${e.message}</div>`;
+  }
+}
+
+loadPersons();
+log('Enroll page ready.', 'ok');
+</script>
+</body>
+</html>

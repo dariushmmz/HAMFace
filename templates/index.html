@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAMFace — Recognition Dashboard</title>
+<style>
+  :root {
+    --bg:         #ffffff;
+    --surface:    #fafafa;
+    --surface2:   #f0f0f0;
+    --border:     #d6d6d6;
+    --accent:     #111111;
+    --accent-dim: #3a3a3a;
+    --danger:     #b91c1c;
+    --warn:       #7a5c2e;
+    --text:       #1a1a1a;
+    --muted:      #6b6b6b;
+    --mono:       'JetBrains Mono', 'Fira Code', monospace;
+    --sans:       'Inter', system-ui, sans-serif;
+    --radius:     6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    overflow: hidden;
+  }
+
+  /* ── Top bar ────────────────────────────────────────────── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+    z-index: 10;
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+  .logo span { color: var(--muted); font-weight: 400; }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    transition: all .15s;
+  }
+  nav a:hover, nav a.active { color: var(--text); background: var(--surface2); }
+  nav a.active { color: var(--accent); }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background .3s;
+  }
+  .status-dot.live { background: var(--accent); box-shadow: 0 0 0 3px rgba(0,0,0,.08); }
+
+  /* ── Main layout ────────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    overflow: hidden;
+  }
+
+  /* ── Left panel ─────────────────────────────────────────── */
+  .panel-left {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 14px;
+    overflow-y: auto;
+  }
+
+  /* Source selector */
+  .source-tabs {
+    display: flex;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: var(--muted);
+    font-size: 13px;
+    cursor: pointer;
+    font-family: var(--sans);
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .tab-btn:hover { color: var(--text); background: var(--surface2); }
+  .tab-btn.active { background: var(--accent-dim); color: #fff; }
+  .tab-btn svg { width: 15px; height: 15px; }
+
+  /* Input areas */
+  .input-area { display: none; }
+  .input-area.active { display: flex; flex-direction: column; gap: 10px; }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,0,0,.04);
+  }
+  .drop-zone .icon { font-size: 28px; margin-bottom: 8px; display: block; }
+
+  input[type=file] { display: none; }
+
+  /* Canvas / video area */
+  .canvas-wrap {
+    position: relative;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    min-height: 400px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .canvas-wrap canvas, .canvas-wrap img, .canvas-wrap video {
+    max-width: 100%;
+    max-height: 60vh;
+    display: block;
+  }
+  #result-img { display: none; }
+  #placeholder {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  /* Controls row */
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    padding: 9px 18px;
+    border-radius: var(--radius);
+    border: none;
+    font-size: 13px;
+    font-family: var(--sans);
+    cursor: pointer;
+    font-weight: 600;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: #ffffff; }
+  .btn-primary:hover { background: #2a2a2a; }
+  .btn-primary:disabled { background: var(--accent-dim); opacity: .5; cursor: not-allowed; }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+
+  .threshold-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  input[type=range] {
+    accent-color: var(--accent);
+    width: 90px;
+  }
+  #threshold-val { color: var(--accent); font-family: var(--mono); font-size: 12px; }
+
+  /* Result badges */
+  .result-strip {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-height: 36px;
+  }
+  .face-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 5px 14px 5px 8px;
+    font-size: 13px;
+    animation: pop .2s ease;
+  }
+  @keyframes pop { from { transform: scale(.8); opacity:0; } to { transform:scale(1); opacity:1; } }
+  .face-badge.match { border-color: var(--accent); }
+  .face-badge.unknown { border-color: var(--danger); }
+  .badge-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted);
+  }
+  .face-badge.match .badge-dot { background: var(--accent); }
+  .face-badge.unknown .badge-dot { background: var(--danger); }
+
+  /* Webcam: raw video is hidden; overlay canvas shows the annotated frame */
+  #webcam-video { display: none; }
+  #webcam-overlay {
+    position: absolute; top:0; left:0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* Video scrub controls */
+  .video-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .video-controls input[type=range] { flex: 1; }
+
+  /* ── Right panel – log ──────────────────────────────────── */
+  .panel-right {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .log-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .log-clear {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--sans);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .log-clear:hover { color: var(--danger); background: rgba(185,28,28,.08); }
+
+  #log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.6;
+    scroll-behavior: smooth;
+  }
+  #log::-webkit-scrollbar { width: 4px; }
+  #log::-webkit-scrollbar-track { background: transparent; }
+  #log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-line {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 6px;
+    padding: 3px 4px;
+    border-radius: 4px;
+    animation: fadein .2s ease;
+  }
+  @keyframes fadein { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+  .log-line:hover { background: var(--surface2); }
+  .log-ts { color: var(--muted); white-space: nowrap; }
+  .log-level {
+    font-weight: 700;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    align-self: start;
+    margin-top: 3px;
+    white-space: nowrap;
+  }
+  .level-info  { background: rgba(0,0,0,.06);      color: var(--muted); }
+  .level-ok    { background: rgba(0,0,0,.08);      color: var(--accent); }
+  .level-warn  { background: rgba(122,92,46,.12);  color: var(--warn); }
+  .level-error { background: rgba(185,28,28,.10);  color: var(--danger); }
+  .log-msg { color: var(--text); word-break: break-all; }
+
+  .log-stats {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .stat {
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .stat-value { font-family: var(--mono); font-size: 18px; color: var(--accent); font-weight: 700; margin-top: 2px; }
+
+  /* spinner */
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    display: none;
+  }
+
+  /* ── Analyze tab overlay ────────────────────────────────────────────────── */
+  #analyze-overlay {
+    display: none;
+    position: fixed; inset: 52px 0 0 0;
+    background: var(--bg);
+    z-index: 20;
+    overflow-y: auto;
+  }
+  .az-grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    height: calc(100vh - 52px);
+    overflow: hidden;
+  }
+  .az-sidebar {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+    background: var(--surface);
+  }
+  .az-sidebar-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .az-main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .az-toolbar {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: var(--surface);
+  }
+  .az-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  /* Sessions list */
+  .session-list { flex: 1; min-height: 0; overflow-y: auto; }
+  .session-item {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .session-item:hover, .session-item.active { background: var(--surface2); }
+  .session-item.active { border-left: 3px solid var(--accent); }
+  .session-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .session-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+    font-family: var(--mono);
+  }
+  .session-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--surface2);
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .session-badge.live { background: #dcfce7; color: #166534; }
+  /* Live tracking feed */
+  .track-wrap {
+    position: relative;
+    background: #000;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    min-height: 280px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #track-canvas {
+    display: none;
+    max-width: 100%;
+    max-height: 50vh;
+  }
+  #track-placeholder {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+  }
+  /* Summary cards */
+  .az-stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .az-stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .az-stat-label { font-size: 10px; text-transform: uppercase; letter-spacing:.06em; color: var(--muted); }
+  .az-stat-value { font-family: var(--mono); font-size: 22px; font-weight: 700; color: var(--accent); margin-top: 4px; }
+  /* Person table */
+  .az-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .az-table-title {
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing:.08em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  table.az-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.az-tbl th {
+    text-align: left;
+    padding: 8px 14px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing:.06em;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+  /* Person summary log (scrolls independently, like detection-log) */
+  .person-log {
+    max-height: 280px;
+    overflow-y: auto;
+  }
+  table.az-tbl td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+  table.az-tbl tr:last-child td { border-bottom: none; }
+  table.az-tbl tr:hover td { background: var(--surface2); }
+  .score-bar-wrap { display:flex; align-items:center; gap:8px; }
+  .score-bar { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+  .score-bar-fill { height:100%; background:var(--accent); border-radius:2px; }
+  /* Timeline chart */
+  .az-chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #timeline-canvas { width:100%; height:120px; display:block; }
+  /* Detection log table (inside detail view) */
+  .detection-log {
+    max-height: 260px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .empty-state {
+    text-align:center;
+    color:var(--muted);
+    padding:32px;
+    font-size:13px;
+  }
+  .pill {
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    padding:2px 8px;
+    border-radius:12px;
+    font-size:11px;
+    font-weight:600;
+  }
+  .pill-known   { background:#f0fdf4; color:#166534; }
+  .pill-unknown { background:#fef2f2; color:#991b1b; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">HAM<span>face</span></div>
+  <div class="status-dot" id="status-dot"></div>
+  <span style="font-size:12px;color:var(--muted)" id="status-text">loading…</span>
+  <nav>
+    <a href="/" class="active">Dashboard</a>
+    <a href="/enroll">Enroll Person</a>
+    <a href="/analyze" id="nav-analyze">Analyze</a>
+  </nav>
+</header>
+
+<main>
+  <!-- LEFT PANEL -->
+  <div class="panel-left">
+
+    <!-- Source tabs -->
+    <div class="source-tabs">
+      <button class="tab-btn active" onclick="switchTab('image')" id="tab-image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        Image
+      </button>
+      <button class="tab-btn" onclick="switchTab('video')" id="tab-video">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+        Video
+      </button>
+      <button class="tab-btn" onclick="switchTab('webcam')" id="tab-webcam">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 14-8 14S4 15.25 4 10a8 8 0 0 1 8-8z"/></svg>
+        Webcam
+      </button>
+    </div>
+
+    <!-- IMAGE input -->
+    <div class="input-area active" id="area-image">
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('img-file').click()">
+        <span class="icon">🖼️</span>
+        Drop an image here or <strong>click to browse</strong><br>
+        <small>JPG, PNG, WEBP</small>
+      </div>
+      <input type="file" id="img-file" accept="image/*" onchange="loadImageFile(this)">
+    </div>
+
+    <!-- VIDEO input -->
+    <div class="input-area" id="area-video">
+      <div class="drop-zone" id="video-drop" onclick="document.getElementById('vid-file').click()">
+        <span class="icon">🎬</span>
+        Drop a video file or <strong>click to browse</strong><br>
+        <small>MP4, AVI, MOV, WEBM</small>
+      </div>
+      <input type="file" id="vid-file" accept="video/*" onchange="loadVideoFile(this)">
+    </div>
+
+    <!-- WEBCAM input (no extra controls needed, handled below) -->
+    <div class="input-area" id="area-webcam"></div>
+
+    <!-- Canvas / display -->
+    <div class="canvas-wrap" id="canvas-wrap">
+      <div id="placeholder">
+        <div style="font-size:32px;margin-bottom:8px">👁️</div>
+        Select a source above to begin
+      </div>
+      <img id="result-img" alt="result">
+      <video id="webcam-video" autoplay muted playsinline style="display:none;max-width:100%;max-height:60vh;"></video>
+      <canvas id="webcam-overlay" style="display:none;position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+      <video id="video-player" style="display:none;max-width:100%;max-height:55vh;" controls></video>
+    </div>
+
+    <!-- Video scrub / seek bar shown for video mode -->
+    <div class="video-controls" id="video-controls" style="display:none">
+      <span id="vid-time">0:00</span>
+      <input type="range" id="vid-seek" min="0" max="100" value="0" step="0.1" oninput="seekVideo(this.value)">
+      <span id="vid-dur">0:00</span>
+    </div>
+
+    <!-- Action controls -->
+    <div class="controls">
+      <button class="btn btn-primary" id="run-btn" onclick="runRecognition()" disabled>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Identify
+      </button>
+      <button class="btn btn-ghost" id="webcam-toggle" onclick="toggleWebcam()" style="display:none">
+        Start Camera
+      </button>
+      <button class="btn btn-ghost" id="video-analyze-btn" onclick="analyzeVideoFrame()" style="display:none">
+        ▶ Analyze Video
+      </button>
+      <div class="spinner" id="spinner"></div>
+      <div class="threshold-wrap">
+        <span>Threshold</span>
+        <input type="range" id="threshold" min="0.2" max="0.9" step="0.05" value="0.45"
+               oninput="document.getElementById('threshold-val').textContent=parseFloat(this.value).toFixed(2)">
+        <span id="threshold-val">0.45</span>
+      </div>
+    </div>
+
+    <!-- Result badges -->
+    <div class="result-strip" id="result-strip"></div>
+
+  </div>
+
+  <!-- RIGHT PANEL – LOG -->
+  <div class="panel-right">
+    <div class="log-header">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="var(--accent)"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12" stroke="#ffffff" stroke-width="2"/><line x1="12" y1="16" x2="12.01" y2="16" stroke="#ffffff" stroke-width="2"/></svg>
+      Activity Log
+      <button class="log-clear" onclick="clearLog()">clear</button>
+    </div>
+    <div id="log"></div>
+    <div class="log-stats">
+      <div class="stat">
+        <div class="stat-label">Frames processed</div>
+        <div class="stat-value" id="stat-frames">0</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Persons in gallery</div>
+        <div class="stat-value" id="stat-gallery">–</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ── ANALYZE OVERLAY ────────────────────────────────────────────────── -->
+<div id="analyze-overlay">
+  <div class="az-grid">
+
+    <!-- Sidebar: session list + new session controls -->
+    <div class="az-sidebar">
+      <div class="az-sidebar-header">
+        📋 Sessions
+        <button class="btn btn-primary" style="padding:4px 10px;font-size:11px;margin-left:auto"
+                onclick="azNewSessionModal()">+ New</button>
+      </div>
+
+      <!-- New session form (collapsible) -->
+      <div id="az-new-form" style="display:none;padding:12px;border-bottom:1px solid var(--border);gap:8px;flex-direction:column">
+        <select id="az-src" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:100%;font-family:var(--sans)">
+          <option value="webcam">📷 Webcam</option>
+          <option value="video">🎬 Video</option>
+          <option value="image">🖼️ Image</option>
+        </select>
+        <input id="az-label" placeholder="Label / filename" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:100%;font-family:var(--sans)">
+        <input id="az-notes" placeholder="Notes (optional)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:100%;font-family:var(--sans)">
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary" style="flex:1;font-size:12px;padding:6px" onclick="azStartSession()">Start</button>
+          <button class="btn btn-ghost"   style="font-size:12px;padding:6px" onclick="azHideNewForm()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Session list -->
+      <div class="session-list" id="az-session-list">
+        <div class="empty-state">No sessions yet.<br>Create one to start tracking.</div>
+      </div>
+
+      <!-- Global stats footer -->
+      <div style="padding:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div class="stat"><div class="stat-label">Total sessions</div><div class="stat-value" id="az-g-sessions">–</div></div>
+        <div class="stat"><div class="stat-label">Total detections</div><div class="stat-value" id="az-g-detections">–</div></div>
+      </div>
+    </div>
+
+    <!-- Main: live feed + summary -->
+    <div class="az-main">
+      <div class="az-toolbar">
+        <span style="font-size:13px;font-weight:600;color:var(--muted)" id="az-session-title">Select or create a session</span>
+        <span style="flex:1"></span>
+        <button class="btn btn-ghost" id="az-track-btn" onclick="azToggleTracking()" style="display:none">▶ Start Tracking</button>
+        <button class="btn btn-ghost" id="az-del-btn" onclick="azDeleteSession()" style="display:none;color:var(--danger)">🗑 Delete</button>
+        <button class="btn btn-ghost" onclick="azRefreshDetail()" style="display:none" id="az-refresh-btn">↻ Refresh</button>
+        <div class="threshold-wrap">
+          <span>Threshold</span>
+          <input type="range" id="az-threshold" min="0.2" max="0.9" step="0.05" value="0.45"
+                 oninput="document.getElementById('az-thresh-val').textContent=parseFloat(this.value).toFixed(2)">
+          <span id="az-thresh-val" style="font-family:var(--mono);font-size:12px;color:var(--accent)">0.45</span>
+        </div>
+      </div>
+
+      <div class="az-body" id="az-body">
+        <div class="empty-state" style="margin:auto">
+          👈 Select a session from the sidebar or create a new one.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let currentTab   = 'image';
+let webcamStream = null;
+let webcamWs     = null;
+let webcamActive = false;
+let framesCount  = 0;
+let webcamTimer  = null;
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+function log(msg, level = 'info') {
+  const el   = document.getElementById('log');
+  const now  = new Date();
+  const ts   = now.toTimeString().slice(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `
+    <span class="log-ts">${ts}</span>
+    <span class="log-level level-${level}">${level.toUpperCase()}</span>
+    <span class="log-msg">${msg}</span>
+  `;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+// ── Status poll ───────────────────────────────────────────────────────────────
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+    document.getElementById('stat-gallery').textContent = d.gallery_size;
+    document.getElementById('status-dot').className = 'status-dot live';
+    document.getElementById('status-text').textContent =
+      `${d.gallery_size} persons enrolled · model ${d.model_ready ? 'ready' : 'loading'}`;
+    if (!d.model_ready) log('Model not yet loaded — run training first.', 'warn');
+  } catch(e) {
+    document.getElementById('status-dot').className = 'status-dot';
+    document.getElementById('status-text').textContent = 'API unreachable';
+  }
+}
+pollStatus();
+setInterval(pollStatus, 10000);
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.input-area').forEach(a => a.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('area-' + tab).classList.add('active');
+
+  // Reset display
+  document.getElementById('result-img').style.display    = 'none';
+  document.getElementById('placeholder').style.display   = '';
+  document.getElementById('webcam-video').style.display  = 'none';
+  document.getElementById('webcam-overlay').style.display= 'none';
+  document.getElementById('video-player').style.display  = 'none';
+  document.getElementById('video-controls').style.display= 'none';
+  document.getElementById('run-btn').style.display       = '';
+  document.getElementById('run-btn').disabled            = true;
+  document.getElementById('webcam-toggle').style.display = 'none';
+  document.getElementById('video-analyze-btn').style.display = 'none';
+  document.getElementById('result-strip').innerHTML      = '';
+
+  if (tab === 'webcam') {
+    document.getElementById('run-btn').style.display       = 'none';
+    document.getElementById('webcam-toggle').style.display = '';
+    stopWebcam();
+  }
+  if (tab === 'video') {
+    document.getElementById('run-btn').style.display = 'none';
+    document.getElementById('video-analyze-btn').style.display = '';
+  }
+  if (tab !== 'video' && videoProcessing) { stopVideoProcessing(); }
+  log(`Switched source → ${tab}`, 'info');
+}
+
+// ── Image mode ────────────────────────────────────────────────────────────────
+let currentImageBlob = null;
+
+function loadImageFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  currentImageBlob = file;
+  const url = URL.createObjectURL(file);
+  const img = document.getElementById('result-img');
+  img.src = url;
+  img.style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('result-strip').innerHTML = '';
+  log(`Image loaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'info');
+}
+
+// Drag-and-drop for images
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    currentImageBlob = file;
+    const img = document.getElementById('result-img');
+    img.src = URL.createObjectURL(file);
+    img.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+    document.getElementById('run-btn').disabled = false;
+    log(`Dropped image: ${file.name}`, 'info');
+  }
+});
+
+async function runRecognition() {
+  if (!currentImageBlob) return;
+  setLoading(true);
+  log('Sending image to recognition API…', 'info');
+
+  const fd = new FormData();
+  fd.append('file', currentImageBlob);
+  fd.append('threshold', document.getElementById('threshold').value);
+
+  try {
+    const r  = await fetch('/api/recognize/image', { method:'POST', body: fd });
+    const d  = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+
+    const img = document.getElementById('result-img');
+    img.src   = 'data:image/jpeg;base64,' + d.image_b64;
+    img.style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+
+    renderBadges(d.results);
+    framesCount++;
+    document.getElementById('stat-frames').textContent = framesCount;
+    d.results.forEach(r => log(`✓ ${r.name}  score=${r.score.toFixed(3)}`, r.name==='unknown'?'warn':'ok'));
+    if (d.results.length === 0) log('No face detected in image.', 'warn');
+  } catch(e) {
+    log(`Error: ${e.message}`, 'error');
+  }
+  setLoading(false);
+}
+
+// ── Video mode ────────────────────────────────────────────────────────────────
+let videoBlob = null;
+const vidEl   = document.getElementById('video-player');
+const vidDrop = document.getElementById('video-drop');
+
+vidDrop.addEventListener('dragover', e => { e.preventDefault(); vidDrop.classList.add('drag-over'); });
+vidDrop.addEventListener('dragleave', () => vidDrop.classList.remove('drag-over'));
+vidDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  vidDrop.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('video/')) setupVideo(file);
+});
+
+function loadVideoFile(input) { if (input.files[0]) setupVideo(input.files[0]); }
+
+function setupVideo(file) {
+  videoBlob = file;
+  vidEl.src = URL.createObjectURL(file);
+  vidEl.style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('video-controls').style.display = 'flex';
+  document.getElementById('video-analyze-btn').disabled = false;
+  log(`Video loaded: ${file.name}  (${(file.size/1024/1024).toFixed(1)} MB)`, 'info');
+
+  vidEl.addEventListener('loadedmetadata', () => {
+    const dur = vidEl.duration;
+    document.getElementById('vid-dur').textContent = fmtTime(dur);
+    document.getElementById('vid-seek').max = dur;
+  }, { once: true });
+
+  vidEl.addEventListener('timeupdate', () => {
+    document.getElementById('vid-seek').value = vidEl.currentTime;
+    document.getElementById('vid-time').textContent = fmtTime(vidEl.currentTime);
+  });
+}
+
+function seekVideo(v) { vidEl.currentTime = parseFloat(v); }
+function fmtTime(s) { return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}` }
+
+// ── Video processing state ────────────────────────────────────────────────────
+let videoProcessing = false;
+let videoFrameInterval = null;
+const VIDEO_FPS = 5; // frames per second to sample
+
+async function analyzeVideoFrame() {
+  if (!vidEl.src) return;
+
+  if (videoProcessing) {
+    // Stop continuous processing
+    stopVideoProcessing();
+    return;
+  }
+
+  videoProcessing = true;
+  const btn = document.getElementById('video-analyze-btn');
+  btn.textContent = '⏹ Stop';
+  btn.classList.add('btn-danger');
+
+  // Show annotated result canvas instead of the raw video player
+  const resultImg = document.getElementById('result-img');
+  vidEl.style.display = 'none';
+  resultImg.style.display = 'block';
+
+  // Play the video so frames advance
+  vidEl.play().catch(() => {});
+  log(`Starting continuous analysis at ${VIDEO_FPS} fps…`, 'info');
+
+  videoFrameInterval = setInterval(async () => {
+    if (!videoProcessing) return;
+
+    // Video ended
+    if (vidEl.ended || vidEl.paused && vidEl.currentTime >= vidEl.duration - 0.1) {
+      log('Video ended.', 'info');
+      stopVideoProcessing();
+      return;
+    }
+
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width  = vidEl.videoWidth  || 640;
+    tmpCanvas.height = vidEl.videoHeight || 480;
+    tmpCanvas.getContext('2d').drawImage(vidEl, 0, 0);
+
+    tmpCanvas.toBlob(async blob => {
+      if (!videoProcessing) return;
+      const fd = new FormData();
+      fd.append('file', blob, 'frame.jpg');
+      fd.append('threshold', document.getElementById('threshold').value);
+      try {
+        const r = await fetch('/api/recognize/video_frame', { method:'POST', body:fd });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || r.statusText);
+
+        // Replace result image with annotated frame (no raw video visible)
+        resultImg.src = 'data:image/jpeg;base64,' + d.image_b64;
+
+        renderBadges(d.results);
+        framesCount++;
+        document.getElementById('stat-frames').textContent = framesCount;
+        d.results.forEach(r => {
+          if (r.name !== 'unknown')
+            log(`✓ ${r.name}  score=${r.score.toFixed(3)}  t=${fmtTime(vidEl.currentTime)}`, 'ok');
+        });
+      } catch(e) {
+        log(`Frame error: ${e.message}`, 'error');
+      }
+    }, 'image/jpeg', 0.85);
+  }, Math.round(1000 / VIDEO_FPS));
+}
+
+function stopVideoProcessing() {
+  videoProcessing = false;
+  if (videoFrameInterval) { clearInterval(videoFrameInterval); videoFrameInterval = null; }
+  vidEl.pause();
+  const btn = document.getElementById('video-analyze-btn');
+  btn.textContent = '▶ Analyze Video';
+  btn.classList.remove('btn-danger');
+  log('Video analysis stopped.', 'info');
+}
+
+// ── Webcam mode ───────────────────────────────────────────────────────────────
+async function toggleWebcam() {
+  if (webcamActive) { stopWebcam(); return; }
+
+  log('Requesting camera access…', 'info');
+  try {
+    webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480 } });
+    const vidW = document.getElementById('webcam-video');
+    vidW.srcObject = webcamStream;
+    // Keep raw video hidden — it only feeds the offscreen capture.
+    // The annotated result is drawn onto #webcam-overlay instead.
+    vidW.style.display = 'none';
+    document.getElementById('placeholder').style.display   = 'none';
+    document.getElementById('webcam-overlay').style.display = 'block';
+    document.getElementById('webcam-toggle').textContent   = 'Stop Camera';
+    document.getElementById('webcam-toggle').classList.add('btn-danger');
+    webcamActive = true;
+    log('Camera started.', 'ok');
+    openWebcamWs();
+  } catch(e) {
+    log(`Camera error: ${e.message}`, 'error');
+  }
+}
+
+function stopWebcam() {
+  if (webcamStream) { webcamStream.getTracks().forEach(t => t.stop()); webcamStream = null; }
+  if (webcamWs)     { webcamWs.close(); webcamWs = null; }
+  if (webcamTimer)  { clearInterval(webcamTimer); webcamTimer = null; }
+  document.getElementById('webcam-video').style.display    = 'none';
+  document.getElementById('webcam-overlay').style.display  = 'none';
+  document.getElementById('webcam-toggle').textContent     = 'Start Camera';
+  document.getElementById('webcam-toggle').classList.remove('btn-danger');
+  webcamActive = false;
+  log('Camera stopped.', 'info');
+}
+
+function openWebcamWs() {
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  webcamWs = new WebSocket(`${protocol}://${location.host}/ws/webcam`);
+
+  webcamWs.onopen = () => {
+    log('WebSocket connected.', 'ok');
+    // Send a frame every 500ms
+    webcamTimer = setInterval(sendWebcamFrame, 500);
+  };
+
+  webcamWs.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'result') {
+      drawWebcamAnnotations(d.image_b64);
+      renderBadges(d.results);
+      framesCount++;
+      document.getElementById('stat-frames').textContent = framesCount;
+      d.results.forEach(r => {
+        if (r.name !== 'unknown')
+          log(`✓ ${r.name}  score=${r.score.toFixed(3)}`, 'ok');
+      });
+    } else if (d.type === 'error') {
+      log(`WS: ${d.msg}`, 'error');
+    }
+  };
+
+  webcamWs.onerror = () => log('WebSocket error.', 'error');
+  webcamWs.onclose = () => log('WebSocket closed.', 'info');
+}
+
+function sendWebcamFrame() {
+  if (!webcamWs || webcamWs.readyState !== 1) return;
+  const video = document.getElementById('webcam-video');
+  if (!video.videoWidth) return;
+
+  const tmp = document.createElement('canvas');
+  tmp.width  = video.videoWidth;
+  tmp.height = video.videoHeight;
+  tmp.getContext('2d').drawImage(video, 0, 0);
+
+  const b64 = tmp.toDataURL('image/jpeg', 0.75);
+  webcamWs.send(JSON.stringify({
+    type: 'frame',
+    data: b64,
+    threshold: parseFloat(document.getElementById('threshold').value),
+  }));
+}
+
+function drawWebcamAnnotations(imgB64) {
+  // The raw webcam-video is hidden; we render the server-annotated frame
+  // directly onto the overlay canvas so only ONE image is visible.
+  const overlay = document.getElementById('webcam-overlay');
+  const wrap    = document.getElementById('canvas-wrap');
+  overlay.width  = wrap.clientWidth  || 640;
+  overlay.height = wrap.clientHeight || 480;
+
+  const img = new Image();
+  img.onload = () => {
+    const ctx = overlay.getContext('2d');
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    // Scale annotated frame to fill the overlay canvas
+    ctx.drawImage(img, 0, 0, overlay.width, overlay.height);
+  };
+  img.src = 'data:image/jpeg;base64,' + imgB64;
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+function renderBadges(results) {
+  const strip = document.getElementById('result-strip');
+  strip.innerHTML = '';
+  if (!results || results.length === 0) {
+    strip.innerHTML = '<span style="color:var(--muted);font-size:12px">No faces detected</span>';
+    return;
+  }
+  results.forEach(r => {
+    const cls = r.name === 'unknown' ? 'unknown' : 'match';
+    const b   = document.createElement('div');
+    b.className = `face-badge ${cls}`;
+    b.innerHTML = `
+      <div class="badge-dot"></div>
+      <strong>${r.name}</strong>
+      <span style="color:var(--muted);font-size:11px">${(r.score*100).toFixed(1)}%</span>
+    `;
+    strip.appendChild(b);
+  });
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ANALYZE TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+let azOverlayOpen  = false;
+let azCurrentSid   = null;   // selected session id
+let azLiveSid      = null;   // session currently being tracked
+let azTrackWs      = null;
+let azTrackTimer   = null;
+let azTrackStream  = null;
+let azTrackActive  = false;
+let azFrameNo      = 0;
+
+// ── Nav link toggle ───────────────────────────────────────────────────────────
+document.getElementById('nav-analyze').addEventListener('click', e => {
+  e.preventDefault();
+  azOpen();
+});
+
+function azOpen() {
+  azOverlayOpen = true;
+  document.getElementById('analyze-overlay').style.display = 'block';
+  document.getElementById('nav-analyze').classList.add('active');
+  azLoadSessions();
+  azLoadGlobalStats();
+}
+
+function azClose() {
+  azOverlayOpen = false;
+  document.getElementById('analyze-overlay').style.display = 'none';
+  document.getElementById('nav-analyze').classList.remove('active');
+  azStopTracking();
+}
+
+// Close on Escape
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && azOverlayOpen) azClose(); });
+
+// ── Session management ────────────────────────────────────────────────────────
+function azNewSessionModal() {
+  const f = document.getElementById('az-new-form');
+  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+}
+function azHideNewForm() {
+  document.getElementById('az-new-form').style.display = 'none';
+}
+
+async function azStartSession() {
+  const source = document.getElementById('az-src').value;
+  const label  = document.getElementById('az-label').value;
+  const notes  = document.getElementById('az-notes').value;
+  const fd = new FormData();
+  fd.append('source', source); fd.append('label', label); fd.append('notes', notes);
+  const r = await fetch('/api/analyze/sessions', { method:'POST', body:fd });
+  const d = await r.json();
+  azHideNewForm();
+  await azLoadSessions();
+  azSelectSession(d.session_id);
+}
+
+async function azLoadSessions() {
+  const r = await fetch('/api/analyze/sessions?limit=80');
+  const d = await r.json();
+  const el = document.getElementById('az-session-list');
+  if (!d.sessions.length) {
+    el.innerHTML = '<div class="empty-state">No sessions yet.<br>Create one to start tracking.</div>';
+    return;
+  }
+  el.innerHTML = d.sessions.map(s => {
+    const live = !s.ended_at;
+    const icon = { webcam:'📷', video:'🎬', image:'🖼️' }[s.source] || '📁';
+    const dt   = new Date(s.started_at).toLocaleString();
+    return `<div class="session-item${azCurrentSid===s.id?' active':''}" onclick="azSelectSession(${s.id})">
+      <div class="session-title">
+        ${icon} ${s.label || s.source}
+        ${live ? '<span class="session-badge live">live</span>' : ''}
+      </div>
+      <div class="session-meta">${dt} · ${s.total_detections||0} detections</div>
+    </div>`;
+  }).join('');
+}
+
+async function azLoadGlobalStats() {
+  const r = await fetch('/api/analyze/stats');
+  const d = await r.json();
+  document.getElementById('az-g-sessions').textContent   = d.total_sessions || 0;
+  document.getElementById('az-g-detections').textContent = d.total_detections || 0;
+}
+
+async function azSelectSession(sid) {
+  azCurrentSid = sid;
+  document.getElementById('az-del-btn').style.display     = '';
+  document.getElementById('az-refresh-btn').style.display = '';
+  document.getElementById('az-track-btn').style.display   = '';
+  await azLoadSessions();   // re-render to show active highlight
+  await azRefreshDetail();
+}
+
+async function azDeleteSession() {
+  if (!azCurrentSid) return;
+  if (!confirm('Delete this session and all its detections?')) return;
+  await fetch(`/api/analyze/sessions/${azCurrentSid}`, { method:'DELETE' });
+  azCurrentSid = null;
+  document.getElementById('az-body').innerHTML = '<div class="empty-state" style="margin:auto">Session deleted.</div>';
+  document.getElementById('az-session-title').textContent = 'Select or create a session';
+  document.getElementById('az-del-btn').style.display     = 'none';
+  document.getElementById('az-refresh-btn').style.display = 'none';
+  document.getElementById('az-track-btn').style.display   = 'none';
+  await azLoadSessions();
+  await azLoadGlobalStats();
+}
+
+// ── Detail view ───────────────────────────────────────────────────────────────
+async function azRefreshDetail() {
+  if (!azCurrentSid) return;
+  const r  = await fetch(`/api/analyze/sessions/${azCurrentSid}/summary`);
+  const d  = await r.json();
+  const s  = d.session;
+  const ps = d.persons;
+  const tl = d.timeline;
+
+  document.getElementById('az-session-title').textContent =
+    `${({webcam:'📷',video:'🎬',image:'🖼️'}[s.source]||'📁')} ${s.label||s.source} · Session #${s.id}`;
+
+  const btn = document.getElementById('az-track-btn');
+  btn.textContent = azTrackActive && azLiveSid===azCurrentSid ? '⏹ Stop Tracking' : '▶ Start Tracking';
+
+  // ── Stats row ────────────────────────────────────────────────────────────────
+  const dur = s.ended_at
+    ? `${Math.round((new Date(s.ended_at)-new Date(s.started_at))/1000)}s`
+    : 'live';
+  const known   = ps.filter(p=>p.person_name!=='unknown').reduce((a,p)=>a+p.detections,0);
+  const unknown = ps.filter(p=>p.person_name==='unknown').reduce((a,p)=>a+p.detections,0);
+  const total   = known + unknown;
+
+  const statsHtml = `
+    <div class="az-stats-row">
+      <div class="az-stat-card"><div class="az-stat-label">Total Detections</div><div class="az-stat-value">${total}</div></div>
+      <div class="az-stat-card"><div class="az-stat-label">Known</div><div class="az-stat-value" style="color:#166534">${known}</div></div>
+      <div class="az-stat-card"><div class="az-stat-label">Unknown</div><div class="az-stat-value" style="color:#991b1b">${unknown}</div></div>
+      <div class="az-stat-card"><div class="az-stat-label">Duration</div><div class="az-stat-value" style="font-size:16px">${dur}</div></div>
+    </div>`;
+
+  // ── Live tracking area ────────────────────────────────────────────────────────
+  const liveHtml = `
+    <div class="track-wrap" id="az-track-wrap">
+      <div id="track-placeholder" class="${azTrackActive && azLiveSid===azCurrentSid ? '' : ''}">
+        ${azTrackActive && azLiveSid===azCurrentSid
+          ? ''
+          : '<div style="font-size:28px;margin-bottom:8px">🎥</div>Press <strong>Start Tracking</strong> to begin live recognition'}
+      </div>
+      <canvas id="track-canvas" style="${azTrackActive && azLiveSid===azCurrentSid ? 'display:block' : 'display:none'}"></canvas>
+    </div>`;
+
+  // ── Timeline chart ────────────────────────────────────────────────────────────
+  const tlHtml = tl.length ? `
+    <div class="az-chart-wrap">
+      <div class="az-table-title">📈 Detection Timeline</div>
+      <canvas id="timeline-canvas" height="100"></canvas>
+    </div>` : '';
+
+  // ── Person summary table ──────────────────────────────────────────────────────
+  const personRows = ps.map(p => {
+    const isUnknown = p.person_name === 'unknown';
+    const pct = (p.avg_score * 100).toFixed(1);
+    const pill = isUnknown
+      ? '<span class="pill pill-unknown">unknown</span>'
+      : `<span class="pill pill-known">${p.person_name}</span>`;
+    const first = new Date(p.first_seen).toLocaleTimeString();
+    const last  = new Date(p.last_seen).toLocaleTimeString();
+    return `<tr>
+      <td>${pill}</td>
+      <td style="font-family:var(--mono)">${p.detections}</td>
+      <td>
+        <div class="score-bar-wrap">
+          <div class="score-bar"><div class="score-bar-fill" style="width:${pct}%"></div></div>
+          <span style="font-family:var(--mono);font-size:11px;white-space:nowrap">${pct}%</span>
+        </div>
+      </td>
+      <td style="font-size:11px;color:var(--muted)">${first}</td>
+      <td style="font-size:11px;color:var(--muted)">${last}</td>
+    </tr>`;
+  }).join('');
+
+  const personHtml = `
+    <div class="az-table-wrap">
+      <div class="az-table-title">👤 Person Summary</div>
+      ${ps.length ? `<div class="person-log"><table class="az-tbl">
+        <thead><tr><th>Person</th><th>Detections</th><th>Avg Score</th><th>First seen</th><th>Last seen</th></tr></thead>
+        <tbody>${personRows}</tbody>
+      </table></div>` : '<div class="empty-state">No detections yet.</div>'}
+    </div>`;
+
+  // ── Recent detections ─────────────────────────────────────────────────────────
+  const dr = await fetch(`/api/analyze/sessions/${azCurrentSid}/detections?limit=50`);
+  const dd = await dr.json();
+  const detRows = dd.detections.map(d => {
+    const isUnk = d.is_unknown;
+    const pill = isUnk
+      ? '<span class="pill pill-unknown">unknown</span>'
+      : `<span class="pill pill-known">${d.person_name}</span>`;
+    const t = new Date(d.ts).toLocaleTimeString();
+    return `<tr>
+      <td>${t}</td>
+      <td>${pill}</td>
+      <td style="font-family:var(--mono)">${(d.score*100).toFixed(1)}%</td>
+      <td style="font-size:11px;color:var(--muted)">${d.frame_no ?? '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const detHtml = `
+    <div class="az-table-wrap">
+      <div class="az-table-title">🕒 Recent Detections</div>
+      ${dd.detections.length ? `<div class="detection-log"><table class="az-tbl">
+        <thead><tr><th>Time</th><th>Person</th><th>Score</th><th>Frame</th></tr></thead>
+        <tbody>${detRows}</tbody>
+      </table></div>` : '<div class="empty-state">No detections yet.</div>'}
+    </div>`;
+
+  document.getElementById('az-body').innerHTML =
+    statsHtml + liveHtml + tlHtml + personHtml + detHtml;
+
+  // ── Draw timeline chart ───────────────────────────────────────────────────────
+  if (tl.length) {
+    const canvas = document.getElementById('timeline-canvas');
+    if (canvas) azDrawTimeline(canvas, tl);
+  }
+}
+
+function azDrawTimeline(canvas, tl) {
+  const W = canvas.parentElement.clientWidth;
+  const H = 100;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const maxCount = Math.max(...tl.map(b => b.count), 1);
+  const barW     = Math.max(2, W / tl.length - 1);
+
+  tl.forEach((b, i) => {
+    const x  = i * (W / tl.length);
+    const kH = (b.known   / maxCount) * (H - 10);
+    const uH = (b.unknown / maxCount) * (H - 10);
+    // known (dark)
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(x, H - kH, barW * 0.6, kH);
+    // unknown (red)
+    ctx.fillStyle = '#b91c1c';
+    ctx.fillRect(x + barW * 0.6, H - uH, barW * 0.4, uH);
+  });
+
+  // Legend
+  ctx.font = '10px Inter, sans-serif';
+  ctx.fillStyle = '#111111'; ctx.fillRect(8, 8, 10, 10);
+  ctx.fillStyle = '#333'; ctx.fillText('Known', 22, 17);
+  ctx.fillStyle = '#b91c1c'; ctx.fillRect(70, 8, 10, 10);
+  ctx.fillStyle = '#333'; ctx.fillText('Unknown', 84, 17);
+}
+
+// ── Live tracking via WebSocket ───────────────────────────────────────────────
+async function azToggleTracking() {
+  if (azTrackActive && azLiveSid === azCurrentSid) {
+    azStopTracking();
+  } else {
+    await azBeginTracking(azCurrentSid);
+  }
+}
+
+async function azBeginTracking(sid) {
+  if (azTrackActive) azStopTracking();
+  azLiveSid    = sid;
+  azFrameNo    = 0;
+  azTrackActive = true;
+
+  // Request webcam
+  try {
+    azTrackStream = await navigator.mediaDevices.getUserMedia({ video: { width:640, height:480 } });
+  } catch(e) {
+    alert('Camera access denied: ' + e.message);
+    azTrackActive = false;
+    return;
+  }
+
+  // Hidden video element for capture
+  let vid = document.getElementById('az-hidden-video');
+  if (!vid) {
+    vid = document.createElement('video');
+    vid.id = 'az-hidden-video';
+    vid.style.display = 'none';
+    vid.autoplay = true;
+    vid.muted    = true;
+    vid.playsInline = true;
+    document.body.appendChild(vid);
+  }
+  vid.srcObject = azTrackStream;
+
+  // Open WS
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  azTrackWs = new WebSocket(`${proto}://${location.host}/api/analyze/ws/track`);
+
+  azTrackWs.onopen = () => {
+    azTrackWs.send(JSON.stringify({
+      type:       'start',
+      session_id: sid,
+      threshold:  parseFloat(document.getElementById('az-threshold').value),
+    }));
+    // Send a frame every 500 ms
+    azTrackTimer = setInterval(() => azSendTrackFrame(vid), 500);
+  };
+
+  azTrackWs.onmessage = e => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'result') {
+      azDrawTrack(d.image_b64);
+      // Optionally refresh detail every 10 frames
+      if (d.frame_no % 10 === 0) azRefreshDetail();
+    } else if (d.type === 'summary') {
+      azRefreshDetail();
+    } else if (d.type === 'error') {
+      console.warn('Track WS error:', d.msg);
+    }
+  };
+
+  azTrackWs.onclose = () => {
+    azTrackActive = false;
+    document.getElementById('az-track-btn').textContent = '▶ Start Tracking';
+  };
+
+  document.getElementById('az-track-btn').textContent = '⏹ Stop Tracking';
+  // show canvas inside track-wrap
+  const c = document.getElementById('track-canvas');
+  const p = document.getElementById('track-placeholder');
+  if (c) { c.style.display = 'block'; }
+  if (p) { p.style.display = 'none'; }
+}
+
+function azSendTrackFrame(vid) {
+  if (!azTrackWs || azTrackWs.readyState !== 1 || !vid.videoWidth) return;
+  const tmp = document.createElement('canvas');
+  tmp.width  = vid.videoWidth;
+  tmp.height = vid.videoHeight;
+  tmp.getContext('2d').drawImage(vid, 0, 0);
+  tmp.toBlob(blob => {
+    if (!azTrackWs || azTrackWs.readyState !== 1) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      azTrackWs.send(JSON.stringify({
+        type:     'frame',
+        data:     reader.result,
+        frame_no: azFrameNo++,
+      }));
+    };
+    reader.readAsDataURL(blob);
+  }, 'image/jpeg', 0.88);
+}
+
+function azDrawTrack(imgB64) {
+  const canvas = document.getElementById('track-canvas');
+  if (!canvas) return;
+  const wrap = document.getElementById('az-track-wrap');
+  const img  = new Image();
+  img.onload = () => {
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const maxW  = wrap.clientWidth;
+    const scale = Math.min(maxW / img.naturalWidth, 1);
+    canvas.style.width  = Math.round(img.naturalWidth  * scale) + 'px';
+    canvas.style.height = Math.round(img.naturalHeight * scale) + 'px';
+    canvas.getContext('2d').drawImage(img, 0, 0);
+  };
+  img.src = 'data:image/jpeg;base64,' + imgB64;
+}
+
+function azStopTracking() {
+  if (azTrackTimer) { clearInterval(azTrackTimer); azTrackTimer = null; }
+  if (azTrackWs)    { azTrackWs.send(JSON.stringify({type:'stop'})); azTrackWs.close(); azTrackWs = null; }
+  if (azTrackStream) { azTrackStream.getTracks().forEach(t=>t.stop()); azTrackStream = null; }
+  const vid = document.getElementById('az-hidden-video');
+  if (vid) { vid.srcObject = null; }
+  azTrackActive = false;
+  const btn = document.getElementById('az-track-btn');
+  if (btn) btn.textContent = '▶ Start Tracking';
+}
+function setLoading(on) {
+  document.getElementById('spinner').style.display = on ? 'block' : 'none';
+  document.getElementById('run-btn').disabled      = on;
+}
+</script>
+</body>
+</html>

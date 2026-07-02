@@ -1,0 +1,14 @@
+# Ignore SQLite database files
+*.db
+*.db-shm
+*.db-wal
+
+inputs/
+# Ignore all files inside any checkpoints directory
+checkpoints/**
+
+# Ignore all directories inside .dataset
+.dataset/*/
+
+# (Optional) Ignore everything inside .dataset
+# .dataset/**
