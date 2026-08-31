@@ -3,7 +3,6 @@
 import base64
 import json
 import logging
-import os
 import pickle
 import sys
 import time
@@ -24,9 +23,9 @@ from fastapi.templating import Jinja2Templates
 ROOT = Path(__file__).parent   # …/face_recognition/
 sys.path.insert(0, str(ROOT))
 
-from face_pipeline import process_frame, embed, preprocess_face    # noqa: E402
+from face_pipeline import process_frame, embed                     # noqa: E402
 from model_store import (                                           # noqa: E402
-    get_gallery, get_label_map, get_model,
+    get_gallery, get_label_map,
     reload_gallery, reload_label_map,
 )
 import database as _db                                              # noqa: E402
@@ -78,12 +77,20 @@ async def enroll_page(request: Request):
 
 @app.get("/api/status")
 async def status():
+    from config import CLASS_WEIGHTS_PATH, MODEL_WEIGHTS_PATH, YOLO_WEIGHTS_PATH
+
     gallery = get_gallery()
     lmap    = get_label_map()
+    required_assets = (
+        ROOT / MODEL_WEIGHTS_PATH,
+        ROOT / CLASS_WEIGHTS_PATH,
+        ROOT / YOLO_WEIGHTS_PATH,
+        ROOT / "checkpoints" / "face_landmarker.task",
+    )
     return {
         "gallery_size":   len(gallery),
         "known_persons":  list(lmap.values()),
-        "model_ready":    True,   # get_model() raises on failure; if we got here it loaded
+        "model_ready":    all(path.is_file() for path in required_assets),
     }
 
 
@@ -142,6 +149,22 @@ async def enroll_person(
     """
     from config import RAW_FACES_DIR, DATASET_ROOT, GALLERY_AVG_PKL, IMAGE_SIZE
     from face_alignment import extract_face
+
+    name = " ".join(name.split())
+    invalid_filename_chars = set('<>:"/\\|?*')
+    windows_reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+    if (
+        not name
+        or len(name) > 100
+        or name != name.rstrip(" .")
+        or any(char in invalid_filename_chars or ord(char) < 32 for char in name)
+        or name.split(".", 1)[0].upper() in windows_reserved_names
+    ):
+        raise HTTPException(400, "Name contains unsupported characters or is invalid.")
 
     person_dir = ROOT / RAW_FACES_DIR / name
     person_dir.mkdir(parents=True, exist_ok=True)

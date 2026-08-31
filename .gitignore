@@ -6,6 +6,8 @@
 
 inputs/
 __pycache__/
+*.py[cod]
+.venv/
 .idea/
 
 # Ignore all files inside any checkpoints directory

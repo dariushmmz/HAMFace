@@ -106,9 +106,20 @@ class LocalStream(nn.Module):
         "repeat_1", "mixed_6a", "repeat_2", "mixed_7a", "repeat_3", "block8",
     )
 
-    def __init__(self):
+    def __init__(self, pretrained: str | None = "vggface2"):
         super().__init__()
-        self.backbone = InceptionResnetV1(pretrained="vggface2")
+        if pretrained is None:
+            # Match the module layout of the VGGFace2 model without loading its
+            # separate initialization checkpoint. The HAMFace state dict owns
+            # all of these parameters, including the unused logits module.
+            self.backbone = InceptionResnetV1(
+                pretrained=None,
+                classify=True,
+                num_classes=8631,
+            )
+            self.backbone.classify = False
+        else:
+            self.backbone = InceptionResnetV1(pretrained=pretrained)
         for p in self.backbone.parameters():
             p.requires_grad = False
         self._unfrozen_blocks: tuple[str, ...] = ()
@@ -182,9 +193,14 @@ class HAMFace(nn.Module):
         compatibility with the classic head-based signature, if present).
     """
 
-    def __init__(self, n_classes: int = N_CLASSES, image_size: int = IMAGE_SIZE):
+    def __init__(
+        self,
+        n_classes: int = N_CLASSES,
+        image_size: int = IMAGE_SIZE,
+        local_pretrained: str | None = "vggface2",
+    ):
         super().__init__()
-        self.local_stream = LocalStream()
+        self.local_stream = LocalStream(pretrained=local_pretrained)
         self.cvt           = _build_cvt(n_classes)
 
         local_dim  = LocalStream.BACKBONE_CHANNELS
@@ -234,9 +250,12 @@ class HAMFace(nn.Module):
         return embedding
 
 
-def build_model(n_classes: int = N_CLASSES) -> HAMFace:
+def build_model(
+    n_classes: int = N_CLASSES,
+    local_pretrained: str | None = "vggface2",
+) -> HAMFace:
     """Construct and return the HAMFace model."""
-    return HAMFace(n_classes=n_classes)
+    return HAMFace(n_classes=n_classes, local_pretrained=local_pretrained)
 
 
 def load_model(
@@ -268,7 +287,9 @@ def load_model(
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = build_model(n_classes)
+    # The saved state dict includes the complete local backbone. Avoid fetching
+    # the separate VGGFace2 initialization weights during normal inference.
+    model = build_model(n_classes, local_pretrained=None)
     state = torch.load(weights_path, map_location=device)
     model.load_state_dict(state)
     model.to(device)

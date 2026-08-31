@@ -602,7 +602,7 @@
     <!-- IMAGE input -->
     <div class="input-area active" id="area-image">
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('img-file').click()">
-        <span class="icon">🖼️</span>
+        <span class="icon">Image</span>
         Drop an image here or <strong>click to browse</strong><br>
         <small>JPG, PNG, WEBP</small>
       </div>
@@ -612,7 +612,7 @@
     <!-- VIDEO input -->
     <div class="input-area" id="area-video">
       <div class="drop-zone" id="video-drop" onclick="document.getElementById('vid-file').click()">
-        <span class="icon">🎬</span>
+        <span class="icon">Video</span>
         Drop a video file or <strong>click to browse</strong><br>
         <small>MP4, AVI, MOV, WEBM</small>
       </div>
@@ -625,7 +625,6 @@
     <!-- Canvas / display -->
     <div class="canvas-wrap" id="canvas-wrap">
       <div id="placeholder">
-        <div style="font-size:32px;margin-bottom:8px">👁️</div>
         Select a source above to begin
       </div>
       <img id="result-img" alt="result">
@@ -651,7 +650,7 @@
         Start Camera
       </button>
       <button class="btn btn-ghost" id="video-analyze-btn" onclick="analyzeVideoFrame()" style="display:none">
-        ▶ Analyze Video
+        Analyze Video
       </button>
       <div class="spinner" id="spinner"></div>
       <div class="threshold-wrap">
@@ -695,7 +694,7 @@
     <!-- Sidebar: session list + new session controls -->
     <div class="az-sidebar">
       <div class="az-sidebar-header">
-        📋 Sessions
+        Sessions
         <button class="btn btn-primary" style="padding:4px 10px;font-size:11px;margin-left:auto"
                 onclick="azNewSessionModal()">+ New</button>
       </div>
@@ -703,9 +702,9 @@
       <!-- New session form (collapsible) -->
       <div id="az-new-form" style="display:none;padding:12px;border-bottom:1px solid var(--border);gap:8px;flex-direction:column">
         <select id="az-src" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:100%;font-family:var(--sans)">
-          <option value="webcam">📷 Webcam</option>
-          <option value="video">🎬 Video</option>
-          <option value="image">🖼️ Image</option>
+          <option value="webcam">Webcam</option>
+          <option value="video">Video</option>
+          <option value="image">Image</option>
         </select>
         <input id="az-label" placeholder="Label / filename" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:100%;font-family:var(--sans)">
         <input id="az-notes" placeholder="Notes (optional)" style="font-size:12px;padding:5px 8px;border:1px solid var(--border);border-radius:4px;width:100%;font-family:var(--sans)">
@@ -732,9 +731,9 @@
       <div class="az-toolbar">
         <span style="font-size:13px;font-weight:600;color:var(--muted)" id="az-session-title">Select or create a session</span>
         <span style="flex:1"></span>
-        <button class="btn btn-ghost" id="az-track-btn" onclick="azToggleTracking()" style="display:none">▶ Start Tracking</button>
-        <button class="btn btn-ghost" id="az-del-btn" onclick="azDeleteSession()" style="display:none;color:var(--danger)">🗑 Delete</button>
-        <button class="btn btn-ghost" onclick="azRefreshDetail()" style="display:none" id="az-refresh-btn">↻ Refresh</button>
+        <button class="btn btn-ghost" id="az-track-btn" onclick="azToggleTracking()" style="display:none">Start Tracking</button>
+        <button class="btn btn-ghost" id="az-del-btn" onclick="azDeleteSession()" style="display:none;color:var(--danger)">Delete</button>
+        <button class="btn btn-ghost" onclick="azRefreshDetail()" style="display:none" id="az-refresh-btn">Refresh</button>
         <div class="threshold-wrap">
           <span>Threshold</span>
           <input type="range" id="az-threshold" min="0.2" max="0.9" step="0.05" value="0.45"
@@ -745,7 +744,7 @@
 
       <div class="az-body" id="az-body">
         <div class="empty-state" style="margin:auto">
-          👈 Select a session from the sidebar or create a new one.
+          Select a session from the sidebar or create a new one.
         </div>
       </div>
     </div>
@@ -890,7 +889,7 @@ async function runRecognition() {
     renderBadges(d.results);
     framesCount++;
     document.getElementById('stat-frames').textContent = framesCount;
-    d.results.forEach(r => log(`✓ ${r.name}  score=${r.score.toFixed(3)}`, r.name==='unknown'?'warn':'ok'));
+    d.results.forEach(r => log(`${r.name}  score=${r.score.toFixed(3)}`, r.name==='unknown'?'warn':'ok'));
     if (d.results.length === 0) log('No face detected in image.', 'warn');
   } catch(e) {
     log(`Error: ${e.message}`, 'error');
@@ -954,7 +953,7 @@ async function analyzeVideoFrame() {
 
   videoProcessing = true;
   const btn = document.getElementById('video-analyze-btn');
-  btn.textContent = '⏹ Stop';
+  btn.textContent = 'Stop';
   btn.classList.add('btn-danger');
 
   // Show annotated result canvas instead of the raw video player
@@ -999,7 +998,7 @@ async function analyzeVideoFrame() {
         document.getElementById('stat-frames').textContent = framesCount;
         d.results.forEach(r => {
           if (r.name !== 'unknown')
-            log(`✓ ${r.name}  score=${r.score.toFixed(3)}  t=${fmtTime(vidEl.currentTime)}`, 'ok');
+            log(`${r.name}  score=${r.score.toFixed(3)}  t=${fmtTime(vidEl.currentTime)}`, 'ok');
         });
       } catch(e) {
         log(`Frame error: ${e.message}`, 'error');
@@ -1013,7 +1012,7 @@ function stopVideoProcessing() {
   if (videoFrameInterval) { clearInterval(videoFrameInterval); videoFrameInterval = null; }
   vidEl.pause();
   const btn = document.getElementById('video-analyze-btn');
-  btn.textContent = '▶ Analyze Video';
+  btn.textContent = 'Analyze Video';
   btn.classList.remove('btn-danger');
   log('Video analysis stopped.', 'info');
 }
@@ -1073,7 +1072,7 @@ function openWebcamWs() {
       document.getElementById('stat-frames').textContent = framesCount;
       d.results.forEach(r => {
         if (r.name !== 'unknown')
-          log(`✓ ${r.name}  score=${r.score.toFixed(3)}`, 'ok');
+          log(`${r.name}  score=${r.score.toFixed(3)}`, 'ok');
       });
     } else if (d.type === 'error') {
       log(`WS: ${d.msg}`, 'error');
@@ -1210,7 +1209,7 @@ async function azLoadSessions() {
   }
   el.innerHTML = d.sessions.map(s => {
     const live = !s.ended_at;
-    const icon = { webcam:'📷', video:'🎬', image:'🖼️' }[s.source] || '📁';
+    const icon = { webcam:'Webcam', video:'Video', image:'Image' }[s.source] || 'Session';
     const dt   = new Date(s.started_at).toLocaleString();
     return `<div class="session-item${azCurrentSid===s.id?' active':''}" onclick="azSelectSession(${s.id})">
       <div class="session-title">
@@ -1262,10 +1261,10 @@ async function azRefreshDetail() {
   const tl = d.timeline;
 
   document.getElementById('az-session-title').textContent =
-    `${({webcam:'📷',video:'🎬',image:'🖼️'}[s.source]||'📁')} ${s.label||s.source} · Session #${s.id}`;
+    `${({webcam:'Webcam',video:'Video',image:'Image'}[s.source]||'Session')} ${s.label||s.source} · Session #${s.id}`;
 
   const btn = document.getElementById('az-track-btn');
-  btn.textContent = azTrackActive && azLiveSid===azCurrentSid ? '⏹ Stop Tracking' : '▶ Start Tracking';
+  btn.textContent = azTrackActive && azLiveSid===azCurrentSid ? 'Stop Tracking' : 'Start Tracking';
 
   // ── Stats row ────────────────────────────────────────────────────────────────
   const dur = s.ended_at
@@ -1289,7 +1288,7 @@ async function azRefreshDetail() {
       <div id="track-placeholder" class="${azTrackActive && azLiveSid===azCurrentSid ? '' : ''}">
         ${azTrackActive && azLiveSid===azCurrentSid
           ? ''
-          : '<div style="font-size:28px;margin-bottom:8px">🎥</div>Press <strong>Start Tracking</strong> to begin live recognition'}
+          : 'Press <strong>Start Tracking</strong> to begin live recognition'}
       </div>
       <canvas id="track-canvas" style="${azTrackActive && azLiveSid===azCurrentSid ? 'display:block' : 'display:none'}"></canvas>
     </div>`;
@@ -1297,7 +1296,7 @@ async function azRefreshDetail() {
   // ── Timeline chart ────────────────────────────────────────────────────────────
   const tlHtml = tl.length ? `
     <div class="az-chart-wrap">
-      <div class="az-table-title">📈 Detection Timeline</div>
+      <div class="az-table-title">Detection Timeline</div>
       <canvas id="timeline-canvas" height="100"></canvas>
     </div>` : '';
 
@@ -1326,7 +1325,7 @@ async function azRefreshDetail() {
 
   const personHtml = `
     <div class="az-table-wrap">
-      <div class="az-table-title">👤 Person Summary</div>
+      <div class="az-table-title">Person Summary</div>
       ${ps.length ? `<div class="person-log"><table class="az-tbl">
         <thead><tr><th>Person</th><th>Detections</th><th>Avg Score</th><th>First seen</th><th>Last seen</th></tr></thead>
         <tbody>${personRows}</tbody>
@@ -1352,7 +1351,7 @@ async function azRefreshDetail() {
 
   const detHtml = `
     <div class="az-table-wrap">
-      <div class="az-table-title">🕒 Recent Detections</div>
+      <div class="az-table-title">Recent Detections</div>
       ${dd.detections.length ? `<div class="detection-log"><table class="az-tbl">
         <thead><tr><th>Time</th><th>Person</th><th>Score</th><th>Frame</th></tr></thead>
         <tbody>${detRows}</tbody>
@@ -1466,10 +1465,10 @@ async function azBeginTracking(sid) {
 
   azTrackWs.onclose = () => {
     azTrackActive = false;
-    document.getElementById('az-track-btn').textContent = '▶ Start Tracking';
+    document.getElementById('az-track-btn').textContent = 'Start Tracking';
   };
 
-  document.getElementById('az-track-btn').textContent = '⏹ Stop Tracking';
+  document.getElementById('az-track-btn').textContent = 'Stop Tracking';
   // show canvas inside track-wrap
   const c = document.getElementById('track-canvas');
   const p = document.getElementById('track-placeholder');
@@ -1522,7 +1521,7 @@ function azStopTracking() {
   if (vid) { vid.srcObject = null; }
   azTrackActive = false;
   const btn = document.getElementById('az-track-btn');
-  if (btn) btn.textContent = '▶ Start Tracking';
+  if (btn) btn.textContent = 'Start Tracking';
 }
 function setLoading(on) {
   document.getElementById('spinner').style.display = on ? 'block' : 'none';

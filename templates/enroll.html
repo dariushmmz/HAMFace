@@ -293,7 +293,7 @@
     <div class="card">
       <div class="card-title">Step 2 — Face Images</div>
       <div class="drop-zone" id="enroll-drop" onclick="document.getElementById('enroll-files').click()">
-        <span class="icon">📷</span>
+        <span class="icon">Photos</span>
         Drop face photos here or <strong>click to browse</strong><br>
         <small>JPG · PNG · WEBP — multiple files accepted</small>
       </div>
@@ -330,7 +330,7 @@
         <div class="empty-state">Loading…</div>
       </div>
       <button class="btn btn-ghost" onclick="loadPersons()" style="align-self:flex-start;font-size:12px;padding:6px 12px">
-        ↻ Refresh
+        Refresh
       </button>
     </div>
   </div>
@@ -398,7 +398,7 @@ function renderPreviews() {
     img.src = URL.createObjectURL(f);
     const rm = document.createElement('button');
     rm.className = 'remove-btn';
-    rm.innerHTML = '✕';
+    rm.innerHTML = 'Remove';
     rm.onclick = () => { selectedFiles.splice(i,1); renderPreviews(); updateFileCount(); checkReady(); };
     const dot = document.createElement('div');
     dot.className = 'face-status';
@@ -447,7 +447,7 @@ async function submitEnroll() {
     if (!r.ok) throw new Error(d.detail || r.statusText);
 
     pb.style.width = '100%';
-    showFeedback(`✓ Enrolled "${name}" — ${d.saved} face(s) saved, gallery now has ${d.gallery_size} person(s).`, 'success');
+    showFeedback(`Enrolled "${name}" — ${d.saved} face(s) saved, gallery now has ${d.gallery_size} person(s).`, 'success');
     log(`Enrolled: ${d.saved} saved, ${d.failed?.length||0} failed.`, 'ok');
     if (d.failed?.length) d.failed.forEach(f => log(`Skipped: ${f}`, 'warn'));
 
@@ -461,7 +461,7 @@ async function submitEnroll() {
   } catch(e) {
     pb.style.width = '100%';
     pb.style.background = 'var(--danger)';
-    showFeedback(`✗ ${e.message}`, 'error');
+    showFeedback(e.message, 'error');
     log(`Enroll failed: ${e.message}`, 'error');
   }
 

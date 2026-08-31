@@ -34,7 +34,6 @@ def get_model():
     from models import HAMFaceLoss, build_model, load_model
 
     root = Path(__file__).parent
-    print(root)
 
     log.info("Loading HAMFace model from '%s' …", MODEL_WEIGHTS_PATH)
     # _model = build_model(N_CLASSES)
