@@ -53,24 +53,48 @@ class HAMFaceLoss(nn.Module):
         W_norm     = F.normalize(self.W,     p=2, dim=1)
 
         cos_theta = embeddings @ W_norm.T                        # (B, num_classes)
-        theta     = torch.acos(cos_theta.clamp(-1.0 + 1e-7, 1.0 - 1e-7))
 
         batch_indices = torch.arange(y_true.size(0), device=y_true.device)
-        theta_yi      = theta[batch_indices, y_true]             # (B,)
+        cos_theta_yi  = cos_theta[batch_indices, y_true]         # (B,)
+
+        # theta_yi is only needed for the hardness comparison and the s_x
+        # weighting term below — acos is fine here since it isn't fed back
+        # through cos() for the logit itself (see note further down).
+        theta_yi = torch.acos(cos_theta_yi.clamp(-1.0 + 1e-7, 1.0 - 1e-7))
+        theta    = torch.acos(cos_theta.clamp(-1.0 + 1e-7, 1.0 - 1e-7))
 
         # Hardest negative: closest non-target class
         one_hot         = F.one_hot(y_true, self.num_classes).float()
         masked_theta    = theta + 1e6 * one_hot
-        min_inter_theta = masked_theta.min(dim=1).values        # (B,)
+        min_inter_theta = masked_theta.min(dim=1).values          # (B,)
 
         # Adaptive margin
+        # hardness == 1  ->  sample is HARD (target angle + base margin
+        #                    already crosses into the nearest negative's
+        #                    territory) -> must NOT receive extra margin.
+        # hardness == 0  ->  sample is EASY -> safe to add extra margin to
+        #                    keep the embedding space well structured.
+        # (Previous version added the extra term when hardness == 1, i.e.
+        # penalized hard samples the most — the opposite of the intended
+        # behaviour. Fixed below by gating on (1 - hardness).)
         hardness        = (theta_yi + self.m > min_inter_theta).float()
         s_x             = 1.0 - torch.cos(theta_yi)
-        adaptive_margin = self.m + self.t * hardness * s_x
+        adaptive_margin = self.m + self.t * (1.0 - hardness) * s_x
 
-        # Modified target logit
-        cos_theta_yi_mod = torch.cos(theta_yi + adaptive_margin)
-        logits           = self.s * cos_theta.clone()
+        # Modified target logit.
+        # Compute cos(theta_yi + adaptive_margin) via the angle-sum identity
+        # directly from cos_theta_yi (and its matching sin), instead of
+        # round-tripping through acos -> cos. acos's gradient explodes near
+        # +/-1 (d/dx acos(x) = -1/sqrt(1-x^2)), which is exactly where
+        # confidently-correct samples sit late in training — this form
+        # avoids that instability for the backward pass through the logit.
+        sin_theta_yi = torch.sqrt((1.0 - cos_theta_yi.pow(2)).clamp(min=1e-7))
+        cos_theta_yi_mod = (
+            cos_theta_yi * torch.cos(adaptive_margin)
+            - sin_theta_yi * torch.sin(adaptive_margin)
+        )
+
+        logits = self.s * cos_theta.clone()
         logits[batch_indices, y_true] = cos_theta_yi_mod * self.s
 
         return F.cross_entropy(logits, y_true)

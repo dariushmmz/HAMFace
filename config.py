@@ -32,7 +32,7 @@ YOLO_CONF_THRESHOLD     = 0.3
 
 # ── Model / training hyperparameters ──────────────────────────────────────────
 IMAGE_SIZE   = 128          # spatial resolution fed to the model
-N_CLASSES    = 4           # number of identity classes
+N_CLASSES    = 5           # number of identity classes
 EMBED_DIM    = 128          # final embedding dimension
 
 # HAMFace loss hyperparameters
@@ -69,3 +69,6 @@ NOISE_STD     = 0.05
 # Contrast adjustment
 CONTRAST_ALPHA = 1.3
 CONTRAST_BETA  = 0.0
+
+WARMUP_EPOCHS = 15       # e.g. for a 50-epoch run
+BACKBONE_LR_MULT = 0.1

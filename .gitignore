@@ -2,8 +2,12 @@
 *.db
 *.db-shm
 *.db-wal
+*.zip
 
 inputs/
+__pycache__/
+.idea/
+
 # Ignore all files inside any checkpoints directory
 checkpoints/**
 

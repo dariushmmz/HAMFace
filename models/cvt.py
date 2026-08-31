@@ -122,7 +122,7 @@ class CvT(nn.Module):
         )
         self.pool    = nn.AdaptiveAvgPool2d(1)
         self.dropout = nn.Dropout(0.5)
-        self.head    = nn.Linear(CVT_EMBED_DIM * 2, num_classes)
+        self.out_dim = CVT_EMBED_DIM * 2  # expose for face_model.py
 
     def forward(self, x: torch.Tensor, training: bool = False) -> torch.Tensor:
         # x: (B, 3, H, W)
@@ -132,4 +132,4 @@ class CvT(nn.Module):
         x = self.transformer(x, training=training)
         x = self.pool(x).flatten(1)   # (B, embed_dim*2)
         x = self.dropout(x)
-        return F.softmax(self.head(x), dim=-1)
+        return x

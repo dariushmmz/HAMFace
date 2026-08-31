@@ -4,12 +4,62 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+
+try:
+    from facenet_pytorch import InceptionResnetV1
+except ImportError as e:
+    raise ImportError(
+        "LocalStream now uses InceptionResnetV1 (VGGFace2-pretrained) as its "
+        "backbone instead of EfficientNetB0. Install it with:\n"
+        "    pip install facenet-pytorch\n"
+    ) from e
 
 from config import IMAGE_SIZE, N_CLASSES, EMBED_DIM, MODEL_WEIGHTS_PATH, CLASS_WEIGHTS_PATH
 from .attention import ChannelAttention, SpatialAttention, DynamicAttentionFusion
 from .cvt import CvT
 from .loss import HAMFaceLoss
+
+# Bottleneck width used for the per-stream projections before the final
+# fusion step. Previously this was 64, which — combined with the wide
+# local stream and the global stream output — collapsed most of the
+# discriminative signal before DynamicAttentionFusion ever saw it.
+PROJ_DIM = 256
+
+# InceptionResnetV1's last two blocks before the embedding head — the
+# ones most likely to hold identity-discriminative detail worth
+# fine-tuning on your dataset, analogous to the last MBConv stages we
+# used to unfreeze on EfficientNetB0.
+DEFAULT_UNFROZEN_BLOCKS = ("repeat_3", "block8")
+
+
+def _build_cvt(n_classes: int) -> CvT:
+    """
+    Construct the CvT global stream, tolerant of either the classic
+    signature (``CvT(in_channels, num_classes)``, softmax classification
+    head) or the updated one (``CvT(in_channels)``, raw pooled features,
+    no head). Avoids this file silently going stale if cvt.py's
+    constructor signature changes.
+    """
+    try:
+        return CvT(in_channels=3, num_classes=n_classes)
+    except TypeError:
+        return CvT(in_channels=3)
+
+
+def _infer_cvt_output_dim(cvt: CvT, image_size: int) -> int:
+    """
+    Run a single dummy forward pass to determine the CvT's actual output
+    feature dimension, rather than assuming it equals n_classes. Keeps
+    face_model.py correct whether cvt.py still has an internal
+    classification head or returns pooled pre-head features.
+    """
+    was_training = cvt.training
+    cvt.eval()
+    with torch.no_grad():
+        dummy = torch.zeros(1, 3, image_size, image_size)
+        out = cvt(dummy, False)
+    cvt.train(was_training)
+    return out.shape[-1]
 
 
 class L2Normalization(nn.Module):
@@ -20,28 +70,86 @@ class L2Normalization(nn.Module):
 
 
 class LocalStream(nn.Module):
-    """EfficientNetB0 backbone (frozen) with channel + spatial attention."""
+    """
+    Face-pretrained backbone (InceptionResnetV1 / VGGFace2) with channel
+    + spatial attention.
 
-    # EfficientNetB0 final feature map has 1280 channels (before classifier)
-    BACKBONE_CHANNELS = 1280
+    Why this backbone instead of EfficientNetB0
+    ---------------------------------------------
+    EfficientNetB0's ImageNet weights encode general object features
+    (edges, textures, object parts for cats/cars/etc.), not features
+    tuned to discriminate between human faces. InceptionResnetV1 here is
+    loaded with weights pretrained on VGGFace2 (3.3M face images across
+    9131 identities) — it already "knows" what makes two faces different,
+    which is a much better starting point than ImageNet features finetuned
+    on a comparatively small identity set.
+
+    We deliberately skip the model's own embedding head (avgpool ->
+    last_linear -> last_bn -> logits) and instead pull the spatial feature
+    map straight out of ``block8`` (shape ``(B, 1792, H', W')``), then run
+    our own channel/spatial attention + fusion on top of it, same as
+    before. The backbone starts fully frozen; call
+    ``unfreeze_last_blocks()`` after a warmup phase to fine-tune the last
+    two blocks (``repeat_3``, ``block8``) on your face data.
+    """
+
+    # Channel count of InceptionResnetV1's block8 output (pre-pool feature map)
+    BACKBONE_CHANNELS = 1792
+
+    # Named children of InceptionResnetV1, in forward order, up to (and
+    # including) block8 — i.e. everything except its own pooling/embedding
+    # head (avgpool_1a, dropout, last_linear, last_bn, logits), which we
+    # don't use.
+    _FORWARD_BLOCKS = (
+        "conv2d_1a", "conv2d_2a", "conv2d_2b", "maxpool_3a",
+        "conv2d_3b", "conv2d_4a", "conv2d_4b",
+        "repeat_1", "mixed_6a", "repeat_2", "mixed_7a", "repeat_3", "block8",
+    )
 
     def __init__(self):
         super().__init__()
-        backbone = efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
-        # Drop classifier; keep only the feature extractor
-        self.features = backbone.features
-        self.avgpool  = backbone.avgpool  # AdaptiveAvgPool2d → not used directly here
-        for p in self.features.parameters():
+        self.backbone = InceptionResnetV1(pretrained="vggface2")
+        for p in self.backbone.parameters():
             p.requires_grad = False
+        self._unfrozen_blocks: tuple[str, ...] = ()
 
         C = self.BACKBONE_CHANNELS
         self.channel_attention = ChannelAttention(channels=C)
         self.spatial_attention = SpatialAttention()
         self.fusion            = DynamicAttentionFusion(in_features=C)
 
+    def _extract_feature_map(self, x: torch.Tensor) -> torch.Tensor:
+        """Run input through InceptionResnetV1 up to block8, skipping its embedding head."""
+        for name in self._FORWARD_BLOCKS:
+            x = getattr(self.backbone, name)(x)
+        return x  # (B, 1792, H', W')
+
+    def unfreeze_last_blocks(self, block_names: tuple[str, ...] = DEFAULT_UNFROZEN_BLOCKS) -> None:
+        """
+        Unfreeze the named top-level blocks of the backbone for
+        fine-tuning. Intended to be called after a warmup phase (e.g. a
+        few epochs training only the attention/fusion/embedding heads),
+        so the rest of the network has stabilized before backbone
+        gradients start flowing.
+
+        Use a lower learning rate for these params than for the rest of
+        the model (e.g. 10x smaller) — see ``HAMFace.get_param_groups``.
+        """
+        self._unfrozen_blocks = tuple(block_names)
+        for name, module in self.backbone.named_children():
+            if name in self._unfrozen_blocks:
+                for p in module.parameters():
+                    p.requires_grad = True
+
+    def backbone_trainable_parameters(self):
+        """Yield only the currently-unfrozen backbone parameters (for param groups)."""
+        for name, module in self.backbone.named_children():
+            if name in self._unfrozen_blocks:
+                yield from module.parameters()
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, 3, H, W)  → features: (B, C, h, w)
-        feat    = self.features(x)
+        feat    = self._extract_feature_map(x)
         ch_feat = self.channel_attention(feat)          # (B, C, h, w)
         sp_feat = self.spatial_attention(feat)          # (B, C, h, w)
 
@@ -57,31 +165,60 @@ class HAMFace(nn.Module):
 
     Architecture
     ------------
-    * **Local stream** — EfficientNetB0 (frozen ImageNet weights) with
-      channel- and spatial-attention, fused by ``DynamicAttentionFusion``.
-    * **Global stream** — single-stage CvT.
-    * Both streams are projected to 64-d, fused again, then mapped to an
-      ``EMBED_DIM``-d L2-normalised embedding.
+    * **Local stream** — InceptionResnetV1 (VGGFace2-pretrained; last two
+      blocks unfreezable for fine-tuning) with channel- and spatial-
+      attention, fused by ``DynamicAttentionFusion``.
+    * **Global stream** — single-stage CvT. Its output feature dimension
+      is auto-detected via a dummy forward pass rather than assumed, so
+      this file stays correct whether cvt.py still has an internal
+      classification head or returns raw pooled features.
+    * Both streams are projected to ``PROJ_DIM``-d, fused again, then
+      mapped to an ``EMBED_DIM``-d L2-normalised embedding.
 
     Parameters
     ----------
     n_classes:
-        Number of identity classes (used by the CvT classification head).
+        Number of identity classes (passed through to CvT for backward
+        compatibility with the classic head-based signature, if present).
     """
 
-    def __init__(self, n_classes: int = N_CLASSES):
+    def __init__(self, n_classes: int = N_CLASSES, image_size: int = IMAGE_SIZE):
         super().__init__()
         self.local_stream = LocalStream()
-        self.cvt          = CvT(in_channels=3, num_classes=n_classes)
+        self.cvt           = _build_cvt(n_classes)
 
         local_dim  = LocalStream.BACKBONE_CHANNELS
-        global_dim = n_classes  # CvT output size
+        global_dim = _infer_cvt_output_dim(self.cvt, image_size)
 
-        self.local_proj  = nn.Sequential(nn.Linear(local_dim,  64), nn.ReLU())
-        self.global_proj = nn.Sequential(nn.Linear(global_dim, 64), nn.ReLU())
-        self.final_fusion = DynamicAttentionFusion(in_features=64)
-        self.embedding    = nn.Linear(64, EMBED_DIM)
-        self.l2_norm      = L2Normalization()
+        self.local_proj    = nn.Sequential(nn.Linear(local_dim,  PROJ_DIM), nn.ReLU())
+        self.global_proj   = nn.Sequential(nn.Linear(global_dim, PROJ_DIM), nn.ReLU())
+        self.final_fusion  = DynamicAttentionFusion(in_features=PROJ_DIM)
+        self.embedding      = nn.Linear(PROJ_DIM, EMBED_DIM)
+        self.l2_norm        = L2Normalization()
+
+    def unfreeze_backbone(self, block_names: tuple[str, ...] = DEFAULT_UNFROZEN_BLOCKS) -> None:
+        """Convenience passthrough to unfreeze the local stream's last backbone blocks."""
+        self.local_stream.unfreeze_last_blocks(block_names)
+
+    def get_param_groups(self, base_lr: float, backbone_lr_mult: float = 0.1) -> list[dict]:
+        """
+        Build optimizer param groups with a reduced LR for any unfrozen
+        backbone parameters. Call this AFTER ``unfreeze_backbone()`` so the
+        backbone group is non-empty when you actually want to fine-tune it.
+
+        Example
+        -------
+        >>> model.unfreeze_backbone()
+        >>> optimizer = torch.optim.AdamW(model.get_param_groups(base_lr=3e-4))
+        """
+        backbone_params = list(self.local_stream.backbone_trainable_parameters())
+        backbone_ids    = {id(p) for p in backbone_params}
+        rest_params     = [p for p in self.parameters() if p.requires_grad and id(p) not in backbone_ids]
+
+        groups = [{"params": rest_params, "lr": base_lr}]
+        if backbone_params:
+            groups.append({"params": backbone_params, "lr": base_lr * backbone_lr_mult})
+        return groups
 
     def forward(
         self,
@@ -90,9 +227,9 @@ class HAMFace(nn.Module):
         training: bool = False,
     ) -> torch.Tensor:
         # local_input, cvt_input: (B, 3, H, W)  [channels-first for PyTorch]
-        local_feat  = self.local_proj(self.local_stream(local_input))   # (B, 64)
-        global_feat = self.global_proj(self.cvt(cvt_input, training))   # (B, 64)
-        combined    = self.final_fusion(local_feat, global_feat)        # (B, 64)
+        local_feat  = self.local_proj(self.local_stream(local_input))   # (B, PROJ_DIM)
+        global_feat = self.global_proj(self.cvt(cvt_input, training))   # (B, PROJ_DIM)
+        combined    = self.final_fusion(local_feat, global_feat)        # (B, PROJ_DIM)
         embedding   = self.l2_norm(self.embedding(combined))           # (B, EMBED_DIM)
         return embedding
 
